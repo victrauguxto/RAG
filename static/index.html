@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual Chat · RAG</title>
+<meta name="description" content="Converse com o manual da moto e veja as páginas citadas.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0d0f14;--panel:#151821;--panel2:#1c2030;--border:#262b3b;--text:#e6e8ef;--muted:#8a90a6;--accent:hsl(258 90% 66%);--accent2:hsl(190 90% 55%)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:grid;grid-template-columns:minmax(380px,1fr) 1.2fr;overflow:hidden}
+  .chat{display:flex;flex-direction:column;border-right:1px solid var(--border);min-height:0}
+  header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  header h1{font-size:16px;font-weight:600}
+  .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 12px var(--accent)}
+  #msgs{flex:1;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:16px}
+  .msg{max-width:88%;padding:12px 16px;border-radius:14px;line-height:1.55;font-size:14px;white-space:pre-wrap;animation:in .25s ease}
+  @keyframes in{from{opacity:0;transform:translateY(6px)}}
+  .user{align-self:flex-end;background:linear-gradient(135deg,var(--accent),hsl(258 70% 52%));color:#fff;border-bottom-right-radius:4px}
+  .bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--border);border-bottom-left-radius:4px}
+  .refs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;white-space:normal}
+  .ref{background:transparent;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:999px;font:500 12px Inter;cursor:pointer;transition:.15s}
+  .ref:hover,.ref.active{background:hsl(190 90% 55%/.12);border-color:var(--accent2)}
+  .typing span{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:var(--muted);animation:b 1s infinite}
+  .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+  @keyframes b{50%{opacity:.2;transform:translateY(-3px)}}
+  form{display:flex;gap:10px;padding:16px 22px;border-top:1px solid var(--border)}
+  #q{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:12px 14px;font:14px Inter;outline:none}
+  #q:focus{border-color:var(--accent)}
+  #send{background:var(--accent);border:0;color:#fff;border-radius:12px;padding:0 18px;font:600 14px Inter;cursor:pointer}
+  #send:disabled{opacity:.5;cursor:wait}
+  .viewer{display:flex;flex-direction:column;background:#0a0b0f;min-height:0}
+  .toolbar{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border);font-size:13px;color:var(--muted)}
+  .toolbar button{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;width:30px;height:30px;cursor:pointer}
+  #pageNum{width:52px;background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px;text-align:center}
+  #pages{flex:1;overflow:auto;display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px;position:relative}
+  .page{position:relative;background:#fff;box-shadow:0 10px 40px #000a;border-radius:4px;flex-shrink:0;transition:box-shadow .3s}
+  .page.flash{box-shadow:0 0 0 3px var(--accent2),0 10px 40px #000a}
+  .page canvas{display:block;width:100%;height:100%;border-radius:4px}
+</style>
+</head>
+<body>
+<main class="chat">
+  <header><div class="dot"></div><h1>Manual Chat</h1></header>
+  <section id="msgs">
+    <div class="msg bot">Olá! Pergunte qualquer coisa sobre o manual da moto.</div>
+  </section>
+  <form id="form">
+    <input id="q" placeholder="Ex.: Qual a pressão dos pneus?" autocomplete="off">
+    <button id="send">Enviar</button>
+  </form>
+</main>
+<aside class="viewer">
+  <div class="toolbar">
+    <button id="prev">‹</button>
+    Página <input id="pageNum" type="number" min="1" value="1"> / <span id="pageCount">–</span>
+    <button id="next">›</button>
+    <span style="flex:1"></span>
+    <button id="zoomOut">−</button><button id="zoomIn">+</button>
+  </div>
+  <div id="pages"></div>
+</aside>
+
+<script type="module">
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs";
+
+const $ = id => document.getElementById(id);
+const wrap = $("pages");
+let pdf, page = 1, scale = 1.3, baseVp, slots = [];
+
+const pdfDoc = await pdfjsLib.getDocument("/pdf").promise;
+pdf = pdfDoc;
+$("pageCount").textContent = pdf.numPages;
+baseVp = (await pdf.getPage(1)).getViewport({ scale: 1 });
+
+// lazy rendering: only draw pages close to the viewport
+const io = new IntersectionObserver(entries => entries.forEach(e => {
+  if (e.isIntersecting) draw(e.target);
+}), { root: wrap, rootMargin: "800px 0px" });
+
+// track the page currently in view
+const seenIo = new IntersectionObserver(entries => {
+  const vis = entries.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+  if (vis) setCurrent(+vis.target.dataset.p);
+}, { root: wrap, threshold: [0.3, 0.6] });
+
+function build() {
+  wrap.innerHTML = ""; slots = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const d = document.createElement("div");
+    d.className = "page"; d.dataset.p = i;
+    d.style.width = baseVp.width * scale + "px";
+    d.style.height = baseVp.height * scale + "px";
+    wrap.appendChild(d); slots.push(d);
+    io.observe(d); seenIo.observe(d);
+  }
+}
+
+async function draw(slot) {
+  if (slot.dataset.scale == scale) return;
+  slot.dataset.scale = scale;
+  const p = await pdf.getPage(+slot.dataset.p);
+  const vp = p.getViewport({ scale: scale * devicePixelRatio });
+  slot.style.height = vp.height / devicePixelRatio + "px"; // handle pages of different sizes
+  slot.style.width = vp.width / devicePixelRatio + "px";
+  const c = document.createElement("canvas");
+  c.width = vp.width; c.height = vp.height;
+  await p.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+  if (slot.dataset.scale == scale) slot.replaceChildren(c);
+}
+
+function setCurrent(n) {
+  page = n; $("pageNum").value = n;
+  document.querySelectorAll(".ref").forEach(b => b.classList.toggle("active", +b.dataset.p === n));
+}
+
+function goTo(n, smooth = true) {
+  n = Math.min(Math.max(1, n), pdf.numPages);
+  const s = slots[n - 1];
+  wrap.scrollTo({ top: s.offsetTop - 20, behavior: smooth ? "smooth" : "auto" });
+  s.classList.add("flash"); setTimeout(() => s.classList.remove("flash"), 1200);
+  setCurrent(n);
+}
+
+function zoom(delta) {
+  const keep = page;
+  scale = Math.max(.5, Math.min(3, scale + delta));
+  build(); goTo(keep, false);
+}
+
+build();
+const render = goTo;
+
+$("prev").onclick = () => goTo(page - 1);
+$("next").onclick = () => goTo(page + 1);
+$("zoomIn").onclick = () => zoom(.2);
+$("zoomOut").onclick = () => zoom(-.2);
+$("pageNum").onchange = e => goTo(+e.target.value);
+
+function addMsg(cls, html) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls; d.innerHTML = html;
+  $("msgs").appendChild(d); $("msgs").scrollTop = 1e9;
+  return d;
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("q").value.trim(); if (!q) return;
+  $("q").value = ""; $("send").disabled = true;
+  addMsg("user", esc(q));
+  const t = addMsg("bot typing", "<span></span><span></span><span></span>");
+  try {
+    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pergunta: q }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.erro || r.statusText);
+    // unique pages, in relevance order
+    const seen = new Map();
+    data.referencias.forEach(x => { if (!seen.has(x.pagina)) seen.set(x.pagina, x); });
+    const chips = [...seen.values()].map(x =>
+      `<button class="ref" data-p="${x.pagina}" title="${esc(x.trecho)}… (score ${x.score})">pág. ${x.pagina}</button>`).join("");
+    t.className = "msg bot";
+    t.innerHTML = esc(data.resposta) + `<div class="refs">${chips}</div>`;
+    t.querySelectorAll(".ref").forEach(b => b.onclick = () => render(+b.dataset.p));
+    if (seen.size) render([...seen.keys()][0]);
+  } catch (err) {
+    t.className = "msg bot"; t.textContent = "Erro: " + err.message;
+  } finally { $("send").disabled = false; $("q").focus(); }
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# ambiente
+venv/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# índices gerados (recrie com a indexação)
+vetores.npy
+chunks.json
+indice_langchain.json
+
+# o manual tem direitos autorais da fabricante: baixe e coloque em files/
+files/*.pdf
