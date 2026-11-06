@@ -1,8 +1,14 @@
-Qual a pressão dos pneus com garupa? | 64
-Qual óleo devo usar no motor? | 89, 96
-Quantos litros de óleo vão na troca? | 60, 89
-Qual a capacidade do tanque de combustível? | 31, 89
-Quanto combustível sobra na reserva? | 31, 89
-Qual a folga correta da corrente? | 71
-Qual vela de ignição devo usar? | 57
-Qual a amperagem do fusível principal? | 79
+# pergunta | páginas do PDF com a resposta | fatos que a resposta precisa conter (separados por ;)
+Qual a pressão ideal dos pneus? | 64 | 200; 225
+Qual a carga máxima que a moto suporta? | 10 | 157
+Quanto de óleo deve ser usado no motor? | 60, 89 | 1,35; 1,45
+Qual óleo devo utilizar? | 89, 96 | 10w-40; 20w-50
+Se eu for comprar uma nova bateria para trocar, quais as especificações dessa bateria? | 90 | xtz7l
+Qual a pressão dos pneus com garupa? | 64 | 200; 225
+Qual óleo devo usar no motor? | 89, 96 | 10w-40; 20w-50
+Quantos litros de óleo vão na troca? | 60, 89 | 1,35; 1,45
+Qual a capacidade do tanque de combustível? | 31, 89 | 14 l
+Quanto combustível sobra na reserva? | 31, 89 | 3,2
+Qual a folga correta da corrente? | 71 | 40,0; 45,0
+Qual vela de ignição devo usar? | 57 | dr8ea-n
+Qual a amperagem do fusível principal? | 79 | 15,0

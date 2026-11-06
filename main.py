@@ -63,9 +63,20 @@ def buscar(pergunta, k=5):
 
 
 def responder(pergunta):
-    texto, resultados = gerar_resposta(pergunta)
+    texto, resultados, uso = gerar_resposta(pergunta)
     print(texto)
     print("\nFontes:", sorted({c["pagina"] for c, _ in resultados}))
+    print(f"Tokens: {uso['tokens_entrada']} entrada, {uso['tokens_saida']} saída "
+          f"({uso['tokens_por_s']} tokens/s)")
+
+
+def uso_tokens(dados):
+    """Extrai o uso de tokens dos campos que o Ollama devolve em cada resposta."""
+    entrada = dados.get("prompt_eval_count", 0)
+    saida = dados.get("eval_count", 0)
+    segundos = dados.get("eval_duration", 0) / 1e9  # Ollama mede em nanossegundos
+    return {"tokens_entrada": entrada, "tokens_saida": saida,
+            "tokens_por_s": round(saida / segundos, 1) if segundos else None}
 
 
 def gerar_resposta(pergunta):
@@ -80,7 +91,8 @@ def gerar_resposta(pergunta):
         "options": {"temperature": 0.2},
     })
     r.raise_for_status()
-    return r.json()["message"]["content"], resultados
+    dados = r.json()
+    return dados["message"]["content"], resultados, uso_tokens(dados)
 
 
 if __name__ == "__main__":

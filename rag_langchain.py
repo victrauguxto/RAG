@@ -1,18 +1,18 @@
 """Mesmo RAG do main.py, mas montado com as peças prontas do LangChain."""
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from main import EMBED_MODEL, LLM, PROMPT
+from main import EMBED_MODEL, LLM, PROMPT, uso_tokens
 
 INDICE = "indice_langchain.json"
 
 embeddings = OllamaEmbeddings(model=EMBED_MODEL)
 llm = ChatOllama(model=LLM, temperature=0.2, reasoning=False)
-chain = ChatPromptTemplate.from_template(PROMPT) | llm | StrOutputParser()
+# sem StrOutputParser: a mensagem completa traz os metadados de uso de tokens
+chain = ChatPromptTemplate.from_template(PROMPT) | llm
 _store = None
 
 
@@ -42,8 +42,8 @@ def buscar(pergunta, k=5):
 def gerar_resposta(pergunta):
     resultados = buscar(pergunta)
     contexto = "\n\n".join(f"[página {c['pagina']}]\n{c['texto']}" for c, _ in resultados)
-    texto = chain.invoke({"contexto": contexto, "pergunta": pergunta})
-    return texto, resultados
+    msg = chain.invoke({"contexto": contexto, "pergunta": pergunta})
+    return msg.content, resultados, uso_tokens(msg.response_metadata)
 
 
 if __name__ == "__main__":
@@ -51,8 +51,10 @@ if __name__ == "__main__":
     if comando == "1":
         indexar(input("Digite o caminho do PDF: "))
     elif comando == "2":
-        texto, resultados = gerar_resposta(input("Qual é a sua pergunta? "))
+        texto, resultados, uso = gerar_resposta(input("Qual é a sua pergunta? "))
         print(texto)
         print("\nFontes:", sorted({c["pagina"] for c, _ in resultados}))
+        print(f"Tokens: {uso['tokens_entrada']} entrada, {uso['tokens_saida']} saída "
+              f"({uso['tokens_por_s']} tokens/s)")
     else:
         print("Comando inválido. Escolha '1' ou '2'.")

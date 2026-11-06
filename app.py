@@ -23,10 +23,10 @@ def chat():
     pergunta = (request.json or {}).get("pergunta", "").strip()
     if not pergunta:
         return jsonify(erro="Pergunta vazia"), 400
-    texto, resultados = gerar_resposta(pergunta)
+    texto, resultados, uso = gerar_resposta(pergunta)
     refs = [{"pagina": c["pagina"], "score": round(s, 3), "trecho": c["texto"][:220]}
             for c, s in resultados]
-    return jsonify(resposta=texto, referencias=refs)
+    return jsonify(resposta=texto, referencias=refs, uso=uso)
 
 
 if __name__ == "__main__":
